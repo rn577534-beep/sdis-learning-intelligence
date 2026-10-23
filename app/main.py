@@ -20,6 +20,17 @@ app = FastAPI(
 )
 
 
+@app.get("/")
+def root():
+    return {
+        "name": "SDIS Learning Intelligence API",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/health",
+        "note": "Prototype API; not production-ready for real student data.",
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.1.0", "mode": "prototype"}
