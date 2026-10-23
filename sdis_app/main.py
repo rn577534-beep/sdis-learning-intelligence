@@ -2,6 +2,7 @@ import os
 import secrets
 
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
@@ -36,15 +37,66 @@ def require_api_key(api_key: str | None = Depends(api_key_header)):
         raise HTTPException(status_code=401, detail="Valid X-API-Key header required")
 
 
-@app.get("/")
+DASHBOARD_HTML = r"""<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#102b46">
+<meta name="description" content="SDIS Learning Intelligence — শিক্ষার্থী শেখার ডেমো ড্যাশবোর্ড">
+<title>SDIS — Learning Intelligence</title>
+<style>
+:root{--ink:#15283e;--muted:#68788d;--blue:#1768e5;--mint:#d9f6e9;--line:#e6edf4;--paper:#f5f8fc;--white:#fff;--orange:#ffbd69}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,"Noto Sans Bengali","Segoe UI",sans-serif;line-height:1.55}a{color:inherit}.shell{max-width:1160px;margin:auto;padding:0 22px}.top{background:#102b46;color:white;padding:16px 0}.toprow{display:flex;align-items:center;justify-content:space-between;gap:14px}.brand{display:flex;gap:12px;align-items:center;font-weight:800;letter-spacing:.2px}.logo{display:grid;place-items:center;background:#c8f5df;color:#123c36;width:42px;height:42px;border-radius:14px;font-size:20px}.brand small{display:block;color:#b9ccdf;font-size:11px;font-weight:500;letter-spacing:1.3px}.links{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:#d6e5f4}.links a{text-decoration:none}.links a:hover{text-decoration:underline}.hero{padding:36px 0 24px;display:grid;grid-template-columns:1.4fr .8fr;gap:22px;align-items:stretch}.eyebrow{color:var(--blue);font-size:12px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase}.hero h1{font-size:clamp(30px,4vw,46px);line-height:1.14;margin:10px 0 14px;letter-spacing:-1.2px}.hero p{max-width:620px;color:var(--muted);margin:0}.heroCard{border-radius:24px;background:linear-gradient(135deg,#1768e5,#0c4db8);color:white;padding:24px;position:relative;overflow:hidden;min-height:190px}.heroCard:after{content:"";position:absolute;width:170px;height:170px;border:28px solid #ffffff20;border-radius:50%;right:-45px;bottom:-80px}.heroCard .pill{background:#ffffff20;color:white}.heroCard h2{font-size:23px;margin:18px 0 6px;position:relative;z-index:1}.heroCard p{color:#e0ecff;font-size:14px;position:relative;z-index:1}.pill{display:inline-flex;align-items:center;gap:7px;background:#eaf2ff;color:#1655b4;border-radius:999px;padding:6px 11px;font-size:12px;font-weight:750}.dot{width:7px;height:7px;border-radius:50%;background:#27bd82}.warning{border:1px solid #f1d9a7;background:#fff8e9;color:#75531b;border-radius:13px;padding:12px 15px;font-size:13px;margin:0 0 22px}.sectionHead{display:flex;justify-content:space-between;align-items:end;gap:12px;margin:28px 0 14px}.sectionHead h2{margin:0;font-size:21px}.sectionHead p{margin:4px 0 0;color:var(--muted);font-size:13px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.card{background:white;border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 4px 16px #203b5708}.stat{display:flex;align-items:center;gap:13px}.icon{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:20px;background:#edf4ff}.stat strong{display:block;font-size:19px}.stat span{font-size:12px;color:var(--muted)}.assessment{display:grid;grid-template-columns:1.3fr .7fr;gap:16px;margin-top:16px}.assessmentMain{background:white;border:1px solid var(--line);border-radius:22px;padding:24px}.assessmentMain h3{font-size:22px;margin:12px 0 5px}.meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:12px 0 18px}.meta span{background:#f2f5f9;border-radius:8px;padding:5px 9px}.btn{border:0;border-radius:12px;padding:12px 17px;font:inherit;font-weight:750;cursor:pointer;transition:transform .15s,background .15s}.btn:hover{transform:translateY(-1px)}.primary{background:var(--blue);color:white}.secondary{background:#eaf2ff;color:#1655b4}.outline{background:white;border:1px solid var(--line);color:var(--ink)}.sideNote{border-radius:22px;padding:22px;background:#e9f8f1;border:1px solid #d5f0e3}.sideNote h3{margin:0 0 8px;font-size:17px}.sideNote p,.sideNote li{font-size:13px;color:#416b5a}.sideNote ul{padding-left:18px}.quiz{display:none;margin-top:20px}.quiz.active{display:block}.progressLine{height:7px;background:#eaf0f7;border-radius:20px;overflow:hidden;margin:12px 0 22px}.progressLine span{display:block;height:100%;width:0;background:#24a878;transition:width .2s}.question{padding:18px 0;border-top:1px solid var(--line)}.question:first-of-type{border-top:0}.question h4{margin:0 0 12px;font-size:17px}.qnum{color:var(--blue);font-size:12px;font-weight:800;letter-spacing:.5px}.options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.option{display:flex;align-items:center;gap:9px;border:1px solid #dce5ef;padding:12px;border-radius:12px;cursor:pointer;background:white}.option:has(input:checked){border-color:var(--blue);background:#eff5ff}.option input{accent-color:var(--blue)}.quizActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.result{display:none;margin-top:18px}.result.active{display:block}.scorePanel{background:#102b46;color:white;border-radius:18px;padding:23px;display:flex;align-items:center;gap:22px;flex-wrap:wrap}.scoreNum{font-size:40px;font-weight:850;line-height:1}.scorePanel p{margin:6px 0 0;color:#c9d9e9;font-size:13px}.reviewList{display:grid;gap:12px;margin-top:15px}.reviewItem{background:white;border:1px solid var(--line);border-radius:15px;padding:17px}.reviewItem h4{margin:0 0 8px}.tag{display:inline-block;border-radius:7px;padding:3px 8px;font-size:11px;font-weight:800;margin-bottom:8px}.correct{background:#dcf8eb;color:#126d49}.incorrect{background:#fff0db;color:#8b4d0b}.reviewItem p{font-size:13px;margin:6px 0;color:var(--muted)}.plan{background:#eff5ff;border:1px solid #dce9ff;padding:18px;border-radius:15px;margin-top:15px}.plan h3{margin:0 0 8px;font-size:17px}.plan li{margin:6px 0;font-size:13px}.foot{margin-top:34px;background:#102b46;color:#c3d3e4;padding:22px 0;font-size:12px}.footrow{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.foot a{color:white}.sr{position:absolute;left:-9999px}@media(max-width:760px){.hero,.assessment{grid-template-columns:1fr}.grid{grid-template-columns:1fr}.toprow{align-items:flex-start;flex-direction:column}.hero{padding-top:26px}.assessmentMain{padding:18px}.options{grid-template-columns:1fr}.shell{padding:0 15px}.sectionHead{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<header class="top"><div class="shell toprow">
+<div class="brand"><div class="logo">S</div><div>SDIS <small>LEARNING INTELLIGENCE</small></div></div>
+<nav class="links" aria-label="প্রধান লিংক"><a href="#assessment">ডেমো পরীক্ষা</a><a href="#review">রিভিউ</a><a href="/docs">API ডকস</a><a href="/health/ready">সিস্টেম স্ট্যাটাস</a></nav>
+</div></header>
+<main class="shell">
+<section class="hero"><div><div class="eyebrow">শেখা বুঝে এগিয়ে চলা</div><h1>প্রতিটি শিক্ষার্থীর<br>পরবর্তী শেখার ধাপ।</h1><p>SDIS শেখার অগ্রগতি বুঝতে এবং অনুশীলনের পরবর্তী ধাপ খুঁজে পেতে তৈরি একটি প্রাথমিক ডেমো। ছোট একটি গণিত পরীক্ষা দিয়ে শুরু করুন।</p></div>
+<div class="heroCard"><span class="pill"><span class="dot"></span> ডেমো সিস্টেম সচল</span><h2>শুধু নম্বর নয়—<br>শেখার দিকনির্দেশনা</h2><p>উত্তর দেখুন, ব্যাখ্যা পড়ুন, তারপর অনুশীলন করুন।</p></div></section>
+<div class="warning"><strong>ডেমো সতর্কতা:</strong> এই প্রশ্ন ও স্কোরিং পদ্ধতি পরীক্ষামূলক; সরকারি পাঠ্যক্রম বা যাচাইকৃত মূল্যায়ন নয়। ফলাফল এই ব্রাউজারেই তৈরি হবে, ডাটাবেজে শিক্ষার্থীর রেকর্ড হিসেবে সংরক্ষণ হবে না।</div>
+<section><div class="sectionHead"><div><h2>আপনার শেখার জায়গা</h2><p>বর্তমানে সক্রিয় ফিচার ও সিস্টেমের সংক্ষিপ্ত অবস্থা</p></div></div>
+<div class="grid">
+<div class="card stat"><div class="icon">🧩</div><div><strong>৩টি প্রশ্ন</strong><span>ষষ্ঠ শ্রেণির গণিত ডেমো</span></div></div>
+<div class="card stat"><div class="icon">📈</div><div><strong>তাৎক্ষণিক রিভিউ</strong><span>উত্তর ও ব্যাখ্যা একসঙ্গে</span></div></div>
+<div class="card stat"><div class="icon">🛡️</div><div><strong>গোপনীয়তা-সচেতন</strong><span>এই ডেমোতে নাম লাগবে না</span></div></div>
+</div></section>
+<section id="assessment"><div class="sectionHead"><div><h2>শুরু করুন</h2><p>প্রায় ২ মিনিট • ৩টি প্রশ্ন • শেষে উত্তর পর্যালোচনা</p></div></div>
+<div class="assessment"><div class="assessmentMain"><span class="pill">ষষ্ঠ শ্রেণি · গণিত</span><h3>গণিত দক্ষতা যাচাই</h3><p style="color:var(--muted);margin:0">যোগ, গুণ ও ভগ্নাংশের একটি প্রাথমিক ধারণা যাচাই করুন। প্রতিটি প্রশ্নে একটি উত্তর বেছে নিন।</p><div class="meta"><span>৩ নম্বর</span><span>সময়সীমা নেই</span><span>নমুনা প্রশ্ন</span></div>
+<button class="btn primary" id="startBtn">পরীক্ষা শুরু করুন →</button>
+<div class="quiz" id="quiz"><div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted)"><span id="progressText">প্রশ্ন ১ / ৩</span><span>অগ্রগতি</span></div><div class="progressLine"><span id="progressBar"></span></div>
+<form id="quizForm">
+<div class="question"><div class="qnum">প্রশ্ন ০১</div><h4>৭ + ৫ = কত?</h4><div class="options"><label class="option"><input type="radio" name="q1" value="10"> ১০</label><label class="option"><input type="radio" name="q1" value="12"> ১২</label><label class="option"><input type="radio" name="q1" value="13"> ১৩</label><label class="option"><input type="radio" name="q1" value="14"> ১৪</label></div></div>
+<div class="question"><div class="qnum">প্রশ্ন ০২</div><h4>৩ × ৫ = কত?</h4><div class="options"><label class="option"><input type="radio" name="q2" value="8"> ৮</label><label class="option"><input type="radio" name="q2" value="12"> ১২</label><label class="option"><input type="radio" name="q2" value="15"> ১৫</label><label class="option"><input type="radio" name="q2" value="20"> ২০</label></div></div>
+<div class="question"><div class="qnum">প্রশ্ন ০৩</div><h4>একটি সম্পূর্ণ জিনিসকে ৪টি সমান ভাগ করা হলো। এর মধ্যে ২টি ভাগ চিহ্নিত। কয়টি ভাগ চিহ্নিত?</h4><div class="options"><label class="option"><input type="radio" name="q3" value="1"> ১টি</label><label class="option"><input type="radio" name="q3" value="2"> ২টি</label><label class="option"><input type="radio" name="q3" value="3"> ৩টি</label><label class="option"><input type="radio" name="q3" value="4"> ৪টি</label></div></div>
+<div class="quizActions"><button class="btn primary" type="submit">উত্তর জমা দিয়ে রিভিউ দেখুন</button><button class="btn outline" type="button" id="cancelBtn">বন্ধ করুন</button></div><p id="formError" style="display:none;color:#a53b30;font-size:13px" role="alert">রিভিউ দেখার আগে তিনটি প্রশ্নেরই উত্তর দিন।</p>
+</form></div>
+<div class="result" id="result" aria-live="polite"></div>
+</div><aside class="sideNote"><h3>এই ডেমো কী দেখাবে?</h3><ul><li>মোট স্কোর ও শতকরা ফল</li><li>প্রতিটি উত্তরের সঠিক উত্তর</li><li>সংক্ষিপ্ত ব্যাখ্যা</li><li>আরও অনুশীলনের প্রস্তাব</li></ul><p><strong>মনে রাখুন:</strong> একটি ছোট পরীক্ষা দিয়ে কারও সামগ্রিক শেখার ক্ষমতা নির্ধারণ করা যায় না।</p></aside></div></section>
+<section id="review"><div class="sectionHead"><div><h2>রিভিউ ও পরবর্তী ধাপ</h2><p>পরীক্ষা শেষ করলে আপনার ফলাফল এই অংশে দেখা যাবে।</p></div></div><div class="card" id="reviewPlaceholder" style="color:var(--muted)">এখনও কোনো উত্তর জমা হয়নি। উপরের ডেমো পরীক্ষা শেষ করলে বিস্তারিত রিভিউ এখানে খুলবে।</div></section>
+</main>
+<footer class="foot"><div class="shell footrow"><span>© SDIS Learning Intelligence · প্রাথমিক প্রোটোটাইপ</span><span><a href="/docs">API ডকস</a> · <a href="/health">Health</a> · <a href="/health/ready">Database status</a></span></div></footer>
+<script>
+const questions=[
+ {id:"q1",answer:"12",title:"৭ + ৫ = কত?",explain:"৭-এর সঙ্গে ৫ যোগ করলে ১২ হয়। চাইলে ৭ থেকে শুরু করে আরও পাঁচ ধাপ গুনে যাচাই করুন।",topic:"পূর্ণসংখ্যার যোগ"},
+ {id:"q2",answer:"15",title:"৩ × ৫ = কত?",explain:"৩ × ৫ মানে ৫-কে তিনবার যোগ করা: ৫ + ৫ + ৫ = ১৫।",topic:"গুণ"},
+ {id:"q3",answer:"2",title:"কয়টি ভাগ চিহ্নিত?",explain:"প্রশ্নে বলা হয়েছে চারটি সমান ভাগের মধ্যে দুটি চিহ্নিত। তাই উত্তর ২টি। পুরো অংশকে চার ভাগ করলে চিহ্নিত অংশ ২/৪ বা অর্ধেক।",topic:"ভগ্নাংশের প্রাথমিক ধারণা"}
+];
+const startBtn=document.getElementById("startBtn"),quiz=document.getElementById("quiz"),result=document.getElementById("result"),form=document.getElementById("quizForm");
+startBtn.addEventListener("click",()=>{quiz.classList.add("active");result.classList.remove("active");startBtn.style.display="none";document.getElementById("reviewPlaceholder").style.display="block";quiz.scrollIntoView({behavior:"smooth",block:"start"});});
+document.getElementById("cancelBtn").addEventListener("click",()=>{quiz.classList.remove("active");startBtn.style.display="inline-block";});
+form.addEventListener("change",()=>{const answered=questions.filter(q=>form.querySelector('input[name="'+q.id+'"]:checked')).length;document.getElementById("progressText").textContent="উত্তর দেওয়া হয়েছে "+answered+" / 3";document.getElementById("progressBar").style.width=(answered/3*100)+"%";document.getElementById("formError").style.display="none";});
+form.addEventListener("submit",e=>{e.preventDefault();const answers={};questions.forEach(q=>{const el=form.querySelector('input[name="'+q.id+'"]:checked');if(el)answers[q.id]=el.value;});if(Object.keys(answers).length!==3){document.getElementById("formError").style.display="block";return;}const score=questions.filter(q=>answers[q.id]===q.answer).length;const percent=Math.round(score/3*100);const details=questions.map((q,i)=>{const ok=answers[q.id]===q.answer;return '<article class="reviewItem"><span class="tag '+(ok?'correct':'incorrect')+'">'+(ok?'✓ সঠিক উত্তর':'↻ আবার অনুশীলন করুন')+'</span><h4>'+(i+1)+'. '+q.title+'</h4><p><strong>আপনার উত্তর:</strong> '+answers[q.id]+'</p><p><strong>সঠিক উত্তর:</strong> '+q.answer+'</p><p>'+q.explain+'</p><p><strong>বিষয়:</strong> '+q.topic+'</p></article>';}).join("");const weak=questions.filter(q=>answers[q.id]!==q.answer);const plan=weak.length?'<div class="plan"><h3>📚 পরবর্তী অনুশীলন</h3><p style="font-size:13px;color:var(--muted)">যে বিষয়গুলোতে ভুল হয়েছে, সেগুলো দিয়ে শুরু করুন:</p><ul>'+weak.map(q=>'<li><strong>'+q.topic+'</strong> — একটি উদাহরণ দেখে একই ধরনের ৩টি অঙ্ক অনুশীলন করুন।</li>').join("")+'</ul><p style="font-size:12px;color:var(--muted)">প্রয়োজনে শিক্ষক/অভিভাবকের সঙ্গে উত্তরগুলো মিলিয়ে নিন।</p></div>':'<div class="plan"><h3>🌱 এবার একটু এগিয়ে যান</h3><p style="font-size:13px">সবগুলো ডেমো প্রশ্ন সঠিক হয়েছে। এবার একটু কঠিন অঙ্ক অনুশীলন করুন এবং কীভাবে সমাধান করেছেন তা ব্যাখ্যা করার চেষ্টা করুন।</p></div>';result.innerHTML='<div class="scorePanel"><div class="scoreNum">'+score+'/3</div><div><strong style="font-size:20px">আপনার ডেমো ফলাফল: '+percent+'%</strong><p>এটি মাত্র ৩টি নমুনা প্রশ্নের ফল—সামগ্রিক দক্ষতার পরিমাপ নয়।</p></div></div><div class="reviewList">'+details+'</div>'+plan+'<div class="quizActions"><button class="btn primary" id="retryBtn">আবার চেষ্টা করুন</button><a class="btn outline" href="/docs" style="text-decoration:none">API ডকস দেখুন</a></div>';result.classList.add("active");quiz.classList.remove("active");document.getElementById("reviewPlaceholder").style.display="none";result.scrollIntoView({behavior:"smooth",block:"start"});document.getElementById("retryBtn").addEventListener("click",()=>{form.reset();result.classList.remove("active");quiz.classList.add("active");document.getElementById("progressText").textContent="প্রশ্ন ১ / ৩";document.getElementById("progressBar").style.width="0";quiz.scrollIntoView({behavior:"smooth",block:"start"});});});
+</script>
+</body></html>"""
+
+
+@app.get("/", response_class=HTMLResponse)
 def root():
-    return {
-        "name": "SDIS Learning Intelligence API",
-        "status": "ok",
-        "docs": "/docs",
-        "health": "/health",
-        "note": "Prototype API; not production-ready for real student data.",
-    }
+    return HTMLResponse(content=DASHBOARD_HTML)
 
 
 @app.get("/health")
