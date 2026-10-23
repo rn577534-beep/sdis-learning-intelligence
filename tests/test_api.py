@@ -169,3 +169,21 @@ def test_teacher_dashboard_summary(monkeypatch):
     assert body["summary"]["student_records"] >= 1
     assert isinstance(body["recent_attempts"], list)
     assert "limitations" in body
+
+
+def test_learning_agent_team_tracks_pseudonymous_progress():
+    import secrets
+    payload={"student_id":1,"demo_session_id":secrets.token_hex(24),"answers":[{"question_id":"q1","answer":"12","time_spent_seconds":18,"hint_count":1},{"question_id":"q2","answer":"0","time_spent_seconds":22},{"question_id":"q3","answer":"2","time_spent_seconds":10}]}
+    first=client.post("/demo/attempts",json=payload)
+    assert first.status_code == 201
+    body=first.json()
+    assert body["agent_team"]["agents_run"] == 6
+    assert body["agent_team"]["agents"][0]["result"]["signals"][0]["time_spent_seconds"] == 18
+    second=client.post("/demo/attempts",json=payload)
+    assert second.status_code == 201
+    assert second.json()["student_id"] == body["student_id"]
+    assert second.json()["agent_team"]["learner_profile"]["evidence_attempts"] >= 2
+
+
+def test_student_agent_profile_requires_api_key():
+    assert client.get("/students/1/agent-profile").status_code == 401
