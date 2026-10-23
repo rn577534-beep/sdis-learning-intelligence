@@ -1,42 +1,28 @@
 # API examples
 
-Use synthetic/demo data only. The current prototype is not production-ready.
+Base URL: your deployed Vercel URL.
 
-## Run locally
-
-```bash
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-Open the interactive API docs at `http://127.0.0.1:8000/docs`.
-
-## Create a synthetic demo student
+Public health checks:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/students \
-  -H "Content-Type: application/json" \
-  -d '{"display_name":"Demo Student","grade_level":"Grade 6","preferred_language":"bn"}'
+curl https://YOUR-APP.vercel.app/health
+curl https://YOUR-APP.vercel.app/health/ready
 ```
 
-## Get the demo assessment
+Student-data endpoints require the `X-API-Key` header. Set `SDIS_API_KEY` in the deployment environment and send the same value only from a trusted client:
 
 ```bash
-curl http://127.0.0.1:8000/assessments/demo-math
+curl -H 'X-API-Key: YOUR_API_KEY' \\
+  https://YOUR-APP.vercel.app/students/1
 ```
 
-## Submit an attempt (replace student_id)
+Create a synthetic student:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/assessments/demo-math/attempts \
-  -H "Content-Type: application/json" \
-  -d '{"student_id":1,"answers":[{"question_id":"q1","answer":"12"},{"question_id":"q2","answer":"15"},{"question_id":"q3","answer":"2"}]}'
+curl -X POST https://YOUR-APP.vercel.app/students \\
+  -H 'Content-Type: application/json' \\
+  -H 'X-API-Key: YOUR_API_KEY' \\
+  -d '{"display_name":"Synthetic Learner","grade_level":"Grade 6","preferred_language":"bn"}'
 ```
 
-## Get the progress report
-
-```bash
-curl http://127.0.0.1:8000/students/1/report
-```
+The API key is an interim shared-secret safeguard, not user accounts or role-based access control. Do not put it in frontend JavaScript or distribute it to students. This MVP is not approved for real student data until proper authentication, authorization, consent, and retention controls are implemented.
