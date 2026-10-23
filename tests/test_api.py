@@ -131,3 +131,41 @@ def test_anonymous_demo_attempt_rejects_unknown_question():
         "answers": [{"question_id": "unknown", "answer": "x"}],
     })
     assert response.status_code == 422
+
+
+def test_student_attempt_history_returns_scores_without_raw_answers(monkeypatch):
+    monkeypatch.delenv("SDIS_TEACHER_API_KEY", raising=False)
+    student_id = make_synthetic_student()
+    response = client.post("/assessments/demo-math/attempts", headers=AUTH_HEADERS, json={
+        "student_id": student_id,
+        "answers": [
+            {"question_id": "q1", "answer": "12"},
+            {"question_id": "q2", "answer": "15"},
+            {"question_id": "q3", "answer": "2"},
+        ],
+    })
+    assert response.status_code == 201
+    history = client.get(f"/students/{student_id}/attempts", headers=AUTH_HEADERS)
+    assert history.status_code == 200
+    body = history.json()
+    assert body["attempt_count"] == 1
+    assert body["history"][0]["percent"] == 100.0
+    assert "answers" not in body["history"][0]
+
+
+def test_teacher_dashboard_requires_key(monkeypatch):
+    monkeypatch.delenv("SDIS_TEACHER_API_KEY", raising=False)
+    response = client.get("/teacher/dashboard")
+    assert response.status_code == 401
+
+
+def test_teacher_dashboard_summary(monkeypatch):
+    monkeypatch.delenv("SDIS_TEACHER_API_KEY", raising=False)
+    student_id = make_synthetic_student()
+    response = client.get("/teacher/dashboard", headers=AUTH_HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["project"] == "SDIS Learning Intelligence"
+    assert body["summary"]["student_records"] >= 1
+    assert isinstance(body["recent_attempts"], list)
+    assert "limitations" in body
