@@ -5,7 +5,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.security import APIKeyHeader
 from sqlalchemy.orm import Session
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 
 from .database import Base, DATABASE_URL, engine, get_db
 from .models import Student, AssessmentAttempt
@@ -35,6 +35,15 @@ def require_api_key(api_key: str | None = Depends(api_key_header)):
         raise HTTPException(status_code=503, detail="API access is not configured")
     if not api_key or not secrets.compare_digest(api_key, expected_key):
         raise HTTPException(status_code=401, detail="Valid X-API-Key header required")
+
+
+def require_teacher_key(api_key: str | None = Depends(api_key_header)):
+    """Teacher access key; dedicated key overrides the legacy shared key."""
+    expected_key = os.getenv("SDIS_TEACHER_API_KEY") or os.getenv("SDIS_API_KEY")
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="Teacher API access is not configured")
+    if not api_key or not secrets.compare_digest(api_key, expected_key):
+        raise HTTPException(status_code=401, detail="Valid teacher API key required")
 
 
 DASHBOARD_HTML = r"""<!doctype html>
@@ -323,5 +332,77 @@ def get_student_report(student_id: int, db: Session = Depends(get_db)):
             "Demo curriculum and assessment are not official or validated.",
             "Scores are limited evidence and must not be used for high-stakes decisions.",
             "Teacher review is required before acting on the suggested learning plan.",
+        ],
+    }
+
+
+@app.get("/students/{student_id}/attempts", dependencies=[Depends(require_api_key)])
+def get_student_attempt_history(student_id: int, db: Session = Depends(get_db)):
+    """Return a student's chronological attempt history without raw answers."""
+    student = db.get(Student, student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    attempts = list(db.scalars(
+        select(AssessmentAttempt)
+        .where(AssessmentAttempt.student_id == student_id)
+        .order_by(AssessmentAttempt.created_at.asc(), AssessmentAttempt.id.asc())
+    ))
+    return {
+        "student_id": student_id,
+        "attempt_count": len(attempts),
+        "history": [
+            {
+                "attempt_id": item.id,
+                "assessment_id": item.assessment_id,
+                "score": item.score,
+                "max_score": item.max_score,
+                "percent": round(100 * item.score / item.max_score, 1) if item.max_score else 0,
+                "objective_results": item.objective_results,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in attempts
+        ],
+    }
+
+
+@app.get("/teacher/dashboard", dependencies=[Depends(require_teacher_key)])
+def get_teacher_dashboard(db: Session = Depends(get_db)):
+    """Small teacher overview; protected by a teacher-specific key when configured."""
+    student_count = db.scalar(select(func.count()).select_from(Student)) or 0
+    attempt_count = db.scalar(select(func.count()).select_from(AssessmentAttempt)) or 0
+    average_percent = db.scalar(
+        select(func.avg(AssessmentAttempt.score / AssessmentAttempt.max_score * 100))
+        .where(AssessmentAttempt.max_score > 0)
+    )
+    recent_rows = db.execute(
+        select(AssessmentAttempt, Student.display_name)
+        .join(Student, Student.id == AssessmentAttempt.student_id)
+        .order_by(AssessmentAttempt.created_at.desc(), AssessmentAttempt.id.desc())
+        .limit(10)
+    ).all()
+    return {
+        "project": "SDIS Learning Intelligence",
+        "status": "prototype",
+        "summary": {
+            "student_records": student_count,
+            "assessment_attempts": attempt_count,
+            "average_score_percent": round(float(average_percent), 1) if average_percent is not None else None,
+        },
+        "recent_attempts": [
+            {
+                "attempt_id": attempt.id,
+                "student_id": attempt.student_id,
+                "student_label": display_name,
+                "assessment_id": attempt.assessment_id,
+                "score": attempt.score,
+                "max_score": attempt.max_score,
+                "percent": round(100 * attempt.score / attempt.max_score, 1) if attempt.max_score else 0,
+                "created_at": attempt.created_at.isoformat(),
+            }
+            for attempt, display_name in recent_rows
+        ],
+        "limitations": [
+            "Prototype data and scoring only; not a validated assessment.",
+            "Teacher review is required; do not use scores for high-stakes decisions.",
         ],
     }
