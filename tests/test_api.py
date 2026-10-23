@@ -3,7 +3,7 @@ import os
 os.environ.setdefault("SDIS_API_KEY", "test-api-key")
 
 from fastapi.testclient import TestClient
-from app.main import app
+from sdis_app.main import app
 
 client = TestClient(app)
 AUTH_HEADERS = {"X-API-Key": "test-api-key"}
