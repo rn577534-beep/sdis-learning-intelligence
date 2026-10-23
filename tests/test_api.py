@@ -106,6 +106,9 @@ def test_root_serves_student_dashboard():
     assert "text/html" in response.headers["content-type"]
     assert "SDIS Learning Intelligence" in response.text
     assert "পরীক্ষা শুরু করুন" in response.text
+    assert "এখন শিখে নিন" in response.text
+    assert "renderTutor" in response.text
+    assert "data-topic=\"fraction\"" in response.text
 
 
 def test_anonymous_demo_attempt_is_saved_and_returns_learning_plan():
