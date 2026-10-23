@@ -1,5 +1,6 @@
 import os
 import secrets
+import hashlib
 
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse
@@ -8,10 +9,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, text, func
 
 from .database import Base, DATABASE_URL, engine, get_db
-from .models import Student, AssessmentAttempt
+from .models import Student, AssessmentAttempt, LearningAgentRun
 from .schemas import StudentCreate, StudentOut, AttemptCreate
 from .curriculum import OBJECTIVES, ASSESSMENTS
 from .learning import make_learning_plan
+from .agents import AGENT_ROLES, run_learning_agent_team
 
 if DATABASE_URL.startswith("sqlite"):
     # Local development convenience. Production schema is managed in PostgreSQL.
@@ -98,7 +100,7 @@ const startBtn=document.getElementById("startBtn"),quiz=document.getElementById(
 startBtn.addEventListener("click",()=>{quiz.classList.add("active");result.classList.remove("active");startBtn.style.display="none";document.getElementById("reviewPlaceholder").style.display="block";quiz.scrollIntoView({behavior:"smooth",block:"start"});});
 document.getElementById("cancelBtn").addEventListener("click",()=>{quiz.classList.remove("active");startBtn.style.display="inline-block";});
 form.addEventListener("change",()=>{const answered=questions.filter(q=>form.querySelector('input[name="'+q.id+'"]:checked')).length;document.getElementById("progressText").textContent="উত্তর দেওয়া হয়েছে "+answered+" / 3";document.getElementById("progressBar").style.width=(answered/3*100)+"%";document.getElementById("formError").style.display="none";});
-form.addEventListener("submit",async e=>{e.preventDefault();const answers={};questions.forEach(q=>{const el=form.querySelector('input[name="'+q.id+'"]:checked');if(el)answers[q.id]=el.value;});if(Object.keys(answers).length!==3){document.getElementById("formError").style.display="block";return;}const submitBtn=form.querySelector('button[type="submit"]');submitBtn.disabled=true;submitBtn.textContent="ফলাফল সংরক্ষণ হচ্ছে…";let serverResult;try{const response=await fetch("/demo/attempts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({student_id:1,answers:questions.map(q=>({question_id:q.id,answer:answers[q.id]}))})});if(!response.ok)throw new Error("API response "+response.status);serverResult=await response.json();}catch(err){document.getElementById("formError").textContent="ফলাফল সার্ভারে সংরক্ষণ করা যায়নি। সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।";document.getElementById("formError").style.display="block";submitBtn.disabled=false;submitBtn.textContent="আবার জমা দিন";return;}submitBtn.disabled=false;submitBtn.textContent="উত্তর জমা দিয়ে রিভিউ দেখুন";const score=serverResult.score;const percent=serverResult.percent;const details=questions.map((q,i)=>{const ok=answers[q.id]===q.answer;return '<article class="reviewItem"><span class="tag '+(ok?'correct':'incorrect')+'">'+(ok?'✓ সঠিক উত্তর':'↻ আবার অনুশীলন করুন')+'</span><h4>'+(i+1)+'. '+q.title+'</h4><p><strong>আপনার উত্তর:</strong> '+answers[q.id]+'</p><p><strong>সঠিক উত্তর:</strong> '+q.answer+'</p><p>'+q.explain+'</p><p><strong>বিষয়:</strong> '+q.topic+'</p></article>';}).join("");const weak=questions.filter(q=>answers[q.id]!==q.answer);const plan=weak.length?'<div class="plan"><h3>📚 পরবর্তী অনুশীলন</h3><p style="font-size:13px;color:var(--muted)">যে বিষয়গুলোতে ভুল হয়েছে, সেগুলো দিয়ে শুরু করুন:</p><ul>'+weak.map(q=>'<li><strong>'+q.topic+'</strong> — একটি উদাহরণ দেখে একই ধরনের ৩টি অঙ্ক অনুশীলন করুন।</li>').join("")+'</ul><p style="font-size:12px;color:var(--muted)">প্রয়োজনে শিক্ষক/অভিভাবকের সঙ্গে উত্তরগুলো মিলিয়ে নিন।</p></div>':'<div class="plan"><h3>🌱 এবার একটু এগিয়ে যান</h3><p style="font-size:13px">সবগুলো ডেমো প্রশ্ন সঠিক হয়েছে। এবার একটু কঠিন অঙ্ক অনুশীলন করুন এবং কীভাবে সমাধান করেছেন তা ব্যাখ্যা করার চেষ্টা করুন।</p></div>';result.innerHTML='<div class="scorePanel"><div class="scoreNum">'+score+'/3</div><div><strong style="font-size:20px">আপনার ডেমো ফলাফল: '+percent+'%</strong><p>সার্ভার রেকর্ড #'+serverResult.attempt_id+' · এটি ৩টি নমুনা প্রশ্নের ফল, সামগ্রিক দক্ষতার পরিমাপ নয়।</p></div></div><div class="reviewList">'+details+'</div>'+plan+'<div class="quizActions"><button class="btn primary" id="retryBtn">আবার চেষ্টা করুন</button><a class="btn outline" href="/docs" style="text-decoration:none">API ডকস দেখুন</a></div>';result.classList.add("active");quiz.classList.remove("active");document.getElementById("reviewPlaceholder").style.display="none";result.scrollIntoView({behavior:"smooth",block:"start"});document.getElementById("retryBtn").addEventListener("click",()=>{form.reset();result.classList.remove("active");quiz.classList.add("active");document.getElementById("progressText").textContent="প্রশ্ন ১ / ৩";document.getElementById("progressBar").style.width="0";quiz.scrollIntoView({behavior:"smooth",block:"start"});});});
+form.addEventListener("submit",async e=>{e.preventDefault();const answers={};questions.forEach(q=>{const el=form.querySelector('input[name="'+q.id+'"]:checked');if(el)answers[q.id]=el.value;});if(Object.keys(answers).length!==3){document.getElementById("formError").style.display="block";return;}const submitBtn=form.querySelector('button[type="submit"]');submitBtn.disabled=true;submitBtn.textContent="ফলাফল সংরক্ষণ হচ্ছে…";let serverResult;try{const response=await fetch("/demo/attempts",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({student_id:1,demo_session_id:(()=>{let id=localStorage.getItem("sdis_demo_session");if(!id){id=crypto.randomUUID().replace(/-/g,"");localStorage.setItem("sdis_demo_session",id)}return id})(),answers:questions.map(q=>({question_id:q.id,answer:answers[q.id]}))})});if(!response.ok)throw new Error("API response "+response.status);serverResult=await response.json();}catch(err){document.getElementById("formError").textContent="ফলাফল সার্ভারে সংরক্ষণ করা যায়নি। সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।";document.getElementById("formError").style.display="block";submitBtn.disabled=false;submitBtn.textContent="আবার জমা দিন";return;}submitBtn.disabled=false;submitBtn.textContent="উত্তর জমা দিয়ে রিভিউ দেখুন";const score=serverResult.score;const percent=serverResult.percent;const details=questions.map((q,i)=>{const ok=answers[q.id]===q.answer;return '<article class="reviewItem"><span class="tag '+(ok?'correct':'incorrect')+'">'+(ok?'✓ সঠিক উত্তর':'↻ আবার অনুশীলন করুন')+'</span><h4>'+(i+1)+'. '+q.title+'</h4><p><strong>আপনার উত্তর:</strong> '+answers[q.id]+'</p><p><strong>সঠিক উত্তর:</strong> '+q.answer+'</p><p>'+q.explain+'</p><p><strong>বিষয়:</strong> '+q.topic+'</p></article>';}).join("");const weak=questions.filter(q=>answers[q.id]!==q.answer);const plan=weak.length?'<div class="plan"><h3>📚 পরবর্তী অনুশীলন</h3><p style="font-size:13px;color:var(--muted)">যে বিষয়গুলোতে ভুল হয়েছে, সেগুলো দিয়ে শুরু করুন:</p><ul>'+weak.map(q=>'<li><strong>'+q.topic+'</strong> — একটি উদাহরণ দেখে একই ধরনের ৩টি অঙ্ক অনুশীলন করুন।</li>').join("")+'</ul><p style="font-size:12px;color:var(--muted)">প্রয়োজনে শিক্ষক/অভিভাবকের সঙ্গে উত্তরগুলো মিলিয়ে নিন।</p></div>':'<div class="plan"><h3>🌱 এবার একটু এগিয়ে যান</h3><p style="font-size:13px">সবগুলো ডেমো প্রশ্ন সঠিক হয়েছে। এবার একটু কঠিন অঙ্ক অনুশীলন করুন এবং কীভাবে সমাধান করেছেন তা ব্যাখ্যা করার চেষ্টা করুন।</p></div>';result.innerHTML='<div class="scorePanel"><div class="scoreNum">'+score+'/3</div><div><strong style="font-size:20px">আপনার ডেমো ফলাফল: '+percent+'%</strong><p>সার্ভার রেকর্ড #'+serverResult.attempt_id+' · এটি ৩টি নমুনা প্রশ্নের ফল, সামগ্রিক দক্ষতার পরিমাপ নয়।</p></div></div><div class="reviewList">'+details+'</div>'+plan+'<div class="quizActions"><button class="btn primary" id="retryBtn">আবার চেষ্টা করুন</button><a class="btn outline" href="/docs" style="text-decoration:none">API ডকস দেখুন</a></div>';result.classList.add("active");quiz.classList.remove("active");document.getElementById("reviewPlaceholder").style.display="none";result.scrollIntoView({behavior:"smooth",block:"start"});document.getElementById("retryBtn").addEventListener("click",()=>{form.reset();result.classList.remove("active");quiz.classList.add("active");document.getElementById("progressText").textContent="প্রশ্ন ১ / ৩";document.getElementById("progressBar").style.width="0";quiz.scrollIntoView({behavior:"smooth",block:"start"});});});
 </script>
 </body></html>"""
 
@@ -254,31 +256,36 @@ def submit_attempt(assessment_id: str, payload: AttemptCreate, db: Session = Dep
 
 @app.post("/demo/attempts", status_code=201)
 def submit_anonymous_demo_attempt(payload: AttemptCreate, db: Session = Depends(get_db)):
-    """Public demo route; no personal name or email is collected."""
+    """Pseudonymous demo session; no name, email, or login is required."""
     assessment_id = "demo-math"
     assessment = ASSESSMENTS[assessment_id]
     valid_ids = {q["question_id"] for q in assessment["questions"]}
-    submitted = {a.question_id: a.answer.strip() for a in payload.answers}
+    submitted = {a.question_id: a.model_dump() for a in payload.answers}
     unknown = set(submitted) - valid_ids
     if unknown:
         raise HTTPException(status_code=422, detail={"message": "Unknown question IDs", "unknown_question_ids": sorted(unknown)})
-    student = Student(display_name="Anonymous demo learner", grade_level="Grade 6", preferred_language="bn")
-    db.add(student)
-    db.flush()
-    objective_points = {}
-    total_score = 0.0
-    max_score = 0.0
-    for q in assessment["questions"]:
-        points = float(q["points"]); max_score += points
-        objective_id = q["objective_id"]
-        objective_points.setdefault(objective_id, {"score": 0.0, "max_score": 0.0})
-        objective_points[objective_id]["max_score"] += points
-        if submitted.get(q["question_id"], "").casefold() == q["answer"].casefold():
-            total_score += points; objective_points[objective_id]["score"] += points
+    session_hash = hashlib.sha256(payload.demo_session_id.encode("utf-8")).hexdigest() if payload.demo_session_id else None
+    student = db.scalar(select(Student).where(Student.demo_session_hash == session_hash)) if session_hash else None
+    if student is None:
+        student = Student(display_name="Anonymous demo learner", grade_level="Grade 6", preferred_language="bn", demo_session_hash=session_hash)
+        db.add(student)
+        db.flush()
+    objective_points, total_score, max_score = {}, 0.0, 0.0
+    for question in assessment["questions"]:
+        points = float(question["points"]); max_score += points
+        oid = question["objective_id"]
+        objective_points.setdefault(oid, {"score": 0.0, "max_score": 0.0})
+        objective_points[oid]["max_score"] += points
+        if submitted.get(question["question_id"], {}).get("answer", "").strip().casefold() == question["answer"].casefold():
+            total_score += points; objective_points[oid]["score"] += points
     results = {k: {"score": v["score"], "max_score": v["max_score"], "percent": round(100*v["score"]/v["max_score"], 1) if v["max_score"] else 0} for k,v in objective_points.items()}
     attempt = AssessmentAttempt(student_id=student.id, assessment_id=assessment_id, answers=[a.model_dump() for a in payload.answers], score=total_score, max_score=max_score, objective_results=results)
-    db.add(attempt); db.commit(); db.refresh(attempt)
-    return {"attempt_id": attempt.id, "student_id": student.id, "assessment_id": assessment_id, "score": total_score, "max_score": max_score, "percent": round(100*total_score/max_score, 1) if max_score else 0, "objective_results": results, "learning_plan": make_learning_plan(student.id, attempt), "note": "Anonymous demonstration result stored; prototype scoring only; teacher review required."}
+    db.add(attempt); db.flush()
+    recent = list(db.scalars(select(AssessmentAttempt).where(AssessmentAttempt.student_id == student.id, AssessmentAttempt.id != attempt.id).order_by(AssessmentAttempt.created_at.desc(), AssessmentAttempt.id.desc()).limit(4)))
+    agent_team = run_learning_agent_team(student.id, attempt, assessment, [a.model_dump() for a in payload.answers], list(reversed(recent)))
+    db.add(LearningAgentRun(student_id=student.id, attempt_id=attempt.id, agent_results=agent_team))
+    db.commit(); db.refresh(attempt)
+    return {"attempt_id":attempt.id,"student_id":student.id,"assessment_id":assessment_id,"score":total_score,"max_score":max_score,"percent":round(100*total_score/max_score,1) if max_score else 0,"objective_results":results,"learning_plan":make_learning_plan(student.id,attempt),"agent_team":agent_team,"note":"Pseudonymous demo record; rule-based prototype only; teacher review required."}
 
 @app.get("/students/{student_id}/learning-plan", dependencies=[Depends(require_api_key)])
 def get_learning_plan(student_id: int, db: Session = Depends(get_db)):
@@ -406,3 +413,11 @@ def get_teacher_dashboard(db: Session = Depends(get_db)):
             "Teacher review is required; do not use scores for high-stakes decisions.",
         ],
     }
+
+
+@app.get("/students/{student_id}/agent-profile", dependencies=[Depends(require_api_key)])
+def get_student_agent_profile(student_id: int, db: Session = Depends(get_db)):
+    if not db.get(Student, student_id):
+        raise HTTPException(status_code=404, detail="Student not found")
+    runs = list(db.scalars(select(LearningAgentRun).where(LearningAgentRun.student_id == student_id).order_by(LearningAgentRun.created_at.desc(), LearningAgentRun.id.desc()).limit(10)))
+    return {"student_id":student_id,"agent_team":AGENT_ROLES,"runs":[{"attempt_id":r.attempt_id,"created_at":r.created_at.isoformat(),"analysis":r.agent_results} for r in runs],"note":"Evidence-limited prototype. Teacher review required; not a diagnosis or high-stakes assessment."}
