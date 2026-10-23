@@ -25,7 +25,6 @@ app = FastAPI(
     ),
 )
 
-
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -80,8 +79,8 @@ def list_objectives(grade_level: str | None = None, subject: str | None = None):
 @app.post("/students", response_model=StudentOut, status_code=201, dependencies=[Depends(require_api_key)])
 def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
     student = Student(
-        display_name=payload.display_name.strip(),
-        grade_level=payload.grade_level.strip(),
+        display_name=payload.display_name,
+        grade_level=payload.grade_level,
         preferred_language=payload.preferred_language,
     )
     db.add(student)
@@ -125,6 +124,18 @@ def submit_attempt(assessment_id: str, payload: AttemptCreate, db: Session = Dep
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
+    valid_question_ids = {question["question_id"] for question in assessment["questions"]}
+    submitted_ids = {answer.question_id for answer in payload.answers}
+    unknown_ids = submitted_ids - valid_question_ids
+    if unknown_ids:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Submission contains question IDs not in this assessment",
+                "unknown_question_ids": sorted(unknown_ids),
+            },
+        )
+
     submitted = {answer.question_id: answer.answer.strip() for answer in payload.answers}
     objective_points = {}
     total_score = 0.0
@@ -134,9 +145,7 @@ def submit_attempt(assessment_id: str, payload: AttemptCreate, db: Session = Dep
         points = float(question["points"])
         max_score += points
         objective_id = question["objective_id"]
-        objective_points.setdefault(
-            objective_id, {"score": 0.0, "max_score": 0.0}
-        )
+        objective_points.setdefault(objective_id, {"score": 0.0, "max_score": 0.0})
         objective_points[objective_id]["max_score"] += points
         user_answer = submitted.get(question["question_id"], "")
         # Exact matching is a placeholder, not a validated assessment method.
@@ -147,10 +156,7 @@ def submit_attempt(assessment_id: str, payload: AttemptCreate, db: Session = Dep
     objective_results = {}
     for objective_id, values in objective_points.items():
         max_objective_score = values["max_score"]
-        percent = (
-            round(100 * values["score"] / max_objective_score, 1)
-            if max_objective_score else 0
-        )
+        percent = round(100 * values["score"] / max_objective_score, 1) if max_objective_score else 0
         objective_results[objective_id] = {
             "score": values["score"],
             "max_score": max_objective_score,
@@ -217,10 +223,7 @@ def get_student_report(student_id: int, db: Session = Depends(get_db)):
             "assessment_id": attempt.assessment_id,
             "score": attempt.score,
             "max_score": attempt.max_score,
-            "percent": (
-                round(100 * attempt.score / attempt.max_score, 1)
-                if attempt.max_score else 0
-            ),
+            "percent": round(100 * attempt.score / attempt.max_score, 1) if attempt.max_score else 0,
             "created_at": attempt.created_at.isoformat(),
         }
         for attempt in attempts
