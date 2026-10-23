@@ -106,3 +106,28 @@ def test_root_serves_student_dashboard():
     assert "text/html" in response.headers["content-type"]
     assert "SDIS Learning Intelligence" in response.text
     assert "পরীক্ষা শুরু করুন" in response.text
+
+
+def test_anonymous_demo_attempt_is_saved_and_returns_learning_plan():
+    response = client.post("/demo/attempts", json={
+        "student_id": 1,
+        "answers": [
+            {"question_id": "q1", "answer": "12"},
+            {"question_id": "q2", "answer": "0"},
+            {"question_id": "q3", "answer": "2"},
+        ],
+    })
+    assert response.status_code == 201
+    body = response.json()
+    assert body["score"] == 2.0
+    assert body["max_score"] == 3.0
+    assert body["attempt_id"] > 0
+    assert body["learning_plan"]["teacher_review_required"] is True
+
+
+def test_anonymous_demo_attempt_rejects_unknown_question():
+    response = client.post("/demo/attempts", json={
+        "student_id": 1,
+        "answers": [{"question_id": "unknown", "answer": "x"}],
+    })
+    assert response.status_code == 422
