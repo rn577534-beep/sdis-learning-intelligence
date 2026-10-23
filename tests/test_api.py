@@ -98,3 +98,11 @@ def test_blank_student_name_is_rejected():
         "preferred_language": "bn",
     })
     assert response.status_code == 422
+
+
+def test_root_serves_student_dashboard():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "SDIS Learning Intelligence" in response.text
+    assert "পরীক্ষা শুরু করুন" in response.text
