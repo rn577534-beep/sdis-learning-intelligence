@@ -40,6 +40,14 @@ Document assumptions, data sources, and limitations. Never commit identifiable s
 - This shared API key is a temporary prototype safeguard, not production-grade authentication or role-based access control. Do not store real student data yet.
 
 
+## Event-based learning team orchestration (incremental)
+
+Assessment submissions now pass through `sdis_app/orchestrator.py`, which centrally routes the event to the six existing deterministic agents and adds explicit orchestration metadata to the existing response. The response remains backward-compatible: the current `agent_team` fields are retained, with an additional `orchestrator` object describing the trigger, selected agents, and execution status.
+
+The coordinator documents future event routes for learner help requests, lesson completion, revision due dates, and goal updates. These routes are marked `routing_only` until their corresponding agent implementations exist; they do not pretend to execute AI work. No model provider or API key is required for this change.
+
+Run the focused tests with `pytest tests/test_orchestrator.py`. This is an incremental architecture step, not yet an LLM tutor or a production-ready multi-agent system.
+
 ## Teacher overview and attempt history (incremental MVP)
 
 - `GET /teacher/dashboard` returns aggregate counts and up to 10 recent attempts. It requires `X-API-Key`.
