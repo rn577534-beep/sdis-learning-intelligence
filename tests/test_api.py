@@ -9,6 +9,16 @@ client = TestClient(app)
 AUTH_HEADERS = {"X-API-Key": "test-api-key"}
 
 
+def make_synthetic_student():
+    response = client.post("/students", headers=AUTH_HEADERS, json={
+        "display_name": "Synthetic Learner",
+        "grade_level": "Grade 6",
+        "preferred_language": "bn",
+    })
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
 def test_health():
     response = client.get("/health")
     assert response.status_code == 200
@@ -29,14 +39,7 @@ def test_student_endpoints_require_api_key():
 
 
 def test_student_assessment_and_report():
-    create = client.post("/students", headers=AUTH_HEADERS, json={
-        "display_name": "Synthetic Learner",
-        "grade_level": "Grade 6",
-        "preferred_language": "bn",
-    })
-    assert create.status_code == 201
-    student_id = create.json()["id"]
-
+    student_id = make_synthetic_student()
     attempt = client.post("/assessments/demo-math/attempts", headers=AUTH_HEADERS, json={
         "student_id": student_id,
         "answers": [
@@ -48,6 +51,10 @@ def test_student_assessment_and_report():
     assert attempt.status_code == 201
     assert attempt.json()["max_score"] == 3.0
 
+    plan = client.get(f"/students/{student_id}/learning-plan", headers=AUTH_HEADERS)
+    assert plan.status_code == 200
+    assert plan.json()["teacher_review_required"] is True
+
     report = client.get(f"/students/{student_id}/report", headers=AUTH_HEADERS)
     assert report.status_code == 200
     assert report.json()["attempt_count"] == 1
@@ -58,3 +65,36 @@ def test_answer_key_not_exposed():
     assert response.status_code == 200
     body = response.json()
     assert all("answer" not in question for question in body["questions"])
+
+
+def test_duplicate_question_ids_are_rejected():
+    student_id = make_synthetic_student()
+    response = client.post("/assessments/demo-math/attempts", headers=AUTH_HEADERS, json={
+        "student_id": student_id,
+        "answers": [
+            {"question_id": "q1", "answer": "12"},
+            {"question_id": "q1", "answer": "999"},
+        ],
+    })
+    assert response.status_code == 422
+
+
+def test_unknown_question_ids_are_rejected():
+    student_id = make_synthetic_student()
+    response = client.post("/assessments/demo-math/attempts", headers=AUTH_HEADERS, json={
+        "student_id": student_id,
+        "answers": [
+            {"question_id": "q1", "answer": "12"},
+            {"question_id": "not-in-this-assessment", "answer": "999"},
+        ],
+    })
+    assert response.status_code == 422
+
+
+def test_blank_student_name_is_rejected():
+    response = client.post("/students", headers=AUTH_HEADERS, json={
+        "display_name": "   ",
+        "grade_level": "Grade 6",
+        "preferred_language": "bn",
+    })
+    assert response.status_code == 422
