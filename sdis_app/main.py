@@ -13,7 +13,8 @@ from .models import Student, AssessmentAttempt, LearningAgentRun
 from .schemas import StudentCreate, StudentOut, AttemptCreate
 from .curriculum import OBJECTIVES, ASSESSMENTS
 from .learning import make_learning_plan
-from .agents import AGENT_ROLES, run_learning_agent_team
+from .agents import AGENT_ROLES
+from .orchestrator import coordinate_assessment_submission
 
 if DATABASE_URL.startswith("sqlite"):
     # Local development convenience. Production schema is managed in PostgreSQL.
@@ -302,7 +303,7 @@ def submit_anonymous_demo_attempt(payload: AttemptCreate, db: Session = Depends(
     attempt = AssessmentAttempt(student_id=student.id, assessment_id=assessment_id, answers=[a.model_dump() for a in payload.answers], score=total_score, max_score=max_score, objective_results=results)
     db.add(attempt); db.flush()
     recent = list(db.scalars(select(AssessmentAttempt).where(AssessmentAttempt.student_id == student.id, AssessmentAttempt.id != attempt.id).order_by(AssessmentAttempt.created_at.desc(), AssessmentAttempt.id.desc()).limit(4)))
-    agent_team = run_learning_agent_team(student.id, attempt, assessment, [a.model_dump() for a in payload.answers], list(reversed(recent)))
+    agent_team = coordinate_assessment_submission(student.id, attempt, assessment, [a.model_dump() for a in payload.answers], list(reversed(recent)))
     db.add(LearningAgentRun(student_id=student.id, attempt_id=attempt.id, agent_results=agent_team))
     db.commit(); db.refresh(attempt)
     return {"attempt_id":attempt.id,"student_id":student.id,"assessment_id":assessment_id,"score":total_score,"max_score":max_score,"percent":round(100*total_score/max_score,1) if max_score else 0,"objective_results":results,"learning_plan":make_learning_plan(student.id,attempt),"agent_team":agent_team,"note":"Pseudonymous demo record; rule-based prototype only; teacher review required."}
