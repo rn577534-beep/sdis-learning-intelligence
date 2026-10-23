@@ -38,3 +38,11 @@ Document assumptions, data sources, and limitations. Never commit identifiable s
 - `/health/ready` checks the database connection without exposing credentials.
 - Production PostgreSQL schema is managed separately; local SQLite tables are created automatically for development/tests.
 - This shared API key is a temporary prototype safeguard, not production-grade authentication or role-based access control. Do not store real student data yet.
+
+
+## Teacher overview and attempt history (incremental MVP)
+
+- `GET /teacher/dashboard` returns aggregate counts and up to 10 recent attempts. It requires `X-API-Key`.
+- Set `SDIS_TEACHER_API_KEY` in Vercel to use a separate teacher key; when set, it overrides `SDIS_API_KEY` for the teacher dashboard. If unset, the legacy `SDIS_API_KEY` is used for compatibility.
+- `GET /students/{student_id}/attempts` returns chronological scores and objective-level results without exposing raw submitted answers. It requires `X-API-Key`.
+- This is not a user login system. Shared API keys are temporary prototype access control; before real school/student use, implement individual accounts, role-based authorization, consent, retention controls, and audit logging.
