@@ -1,0 +1,36 @@
+name: SDIS uptime check
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdis-uptime-check
+  cancel-in-progress: true
+
+jobs:
+  uptime:
+    name: Check production API health
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check liveness endpoint
+        env:
+          BASE_URL: https://sdis-learning-intelligence.vercel.app
+        run: |
+          body="$(curl --retry 2 --retry-delay 3 --fail --silent --show-error --max-time 15 "$BASE_URL/health")"
+          printf 'Health response: %s\n' "$body"
+          printf '%s' "$body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'
+
+      - name: Check database readiness endpoint
+        env:
+          BASE_URL: https://sdis-learning-intelligence.vercel.app
+        run: |
+          body="$(curl --retry 2 --retry-delay 3 --fail --silent --show-error --max-time 15 "$BASE_URL/health/ready")"
+          printf 'Readiness response: %s\n' "$body"
+          printf '%s' "$body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ready"'
+          printf '%s' "$body" | grep -Eq '"database"[[:space:]]*:[[:space:]]*"connected"'
