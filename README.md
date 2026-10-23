@@ -29,3 +29,12 @@ Before any school deployment, add authentication and authorization, secure data 
 ## Contributions
 
 Document assumptions, data sources, and limitations. Never commit identifiable student information, credentials, API keys, or other secrets.
+
+## Deployment and security notes
+
+- Vercel entrypoint: `app.py` (FastAPI ASGI app).
+- PostgreSQL: set `SDIS_DATABASE_URL` to a Neon connection string in Vercel project environment variables.
+- API protection: set a strong `SDIS_API_KEY` in Vercel. Student-data endpoints require the `X-API-Key` header; health and demo curriculum endpoints are public.
+- `/health/ready` checks the database connection without exposing credentials.
+- Production PostgreSQL schema is managed separately; local SQLite tables are created automatically for development/tests.
+- This shared API key is a temporary prototype safeguard, not production-grade authentication or role-based access control. Do not store real student data yet.
