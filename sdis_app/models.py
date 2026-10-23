@@ -15,6 +15,7 @@ class Student(Base):
     display_name = Column(String(80), nullable=False)
     grade_level = Column(String(30), nullable=False)
     preferred_language = Column(String(8), nullable=False, default="bn")
+    demo_session_hash = Column(String(64), unique=True, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     attempts = relationship(
         "AssessmentAttempt",
@@ -35,3 +36,12 @@ class AssessmentAttempt(Base):
     objective_results = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     student = relationship("Student", back_populates="attempts")
+
+
+class LearningAgentRun(Base):
+    __tablename__ = "learning_agent_runs"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False, index=True)
+    attempt_id = Column(Integer, ForeignKey("assessment_attempts.id"), nullable=False, index=True)
+    agent_results = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

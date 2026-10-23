@@ -46,3 +46,10 @@ Document assumptions, data sources, and limitations. Never commit identifiable s
 - Set `SDIS_TEACHER_API_KEY` in Vercel to use a separate teacher key; when set, it overrides `SDIS_API_KEY` for the teacher dashboard. If unset, the legacy `SDIS_API_KEY` is used for compatibility.
 - `GET /students/{student_id}/attempts` returns chronological scores and objective-level results without exposing raw submitted answers. It requires `X-API-Key`.
 - This is not a user login system. Shared API keys are temporary prototype access control; before real school/student use, implement individual accounts, role-based authorization, consent, retention controls, and audit logging.
+
+
+## Learning agent team (prototype v0.1)
+
+The demo runs six transparent, deterministic agents: Learning Footprint, Error Pattern, Mastery Progress, Adaptive Practice, Evidence Quality, and Student Safety & Quality. Each run is stored in learning_agent_runs and can be retrieved via GET /students/{student_id}/agent-profile (requires the existing API key). The public demo uses a random pseudonymous session ID saved in the browser to connect repeated attempts without asking for a name, email, or login. The raw session ID is hashed before storage. Optional question signals include time spent, hint count, and revision count; they are observational signals, not proof of effort or ability.
+
+This is a rule-based agent pipeline, not six independent LLMs. It does not infer hidden traits, make diagnoses, or support high-stakes decisions. Apply migrations/001_learning_agent_team.sql before deploying to PostgreSQL.
