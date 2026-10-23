@@ -1,14 +1,20 @@
-from fastapi import FastAPI, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+import os
+import secrets
 
-from .database import Base, engine, get_db
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.security import APIKeyHeader
+from sqlalchemy.orm import Session
+from sqlalchemy import select, text
+
+from .database import Base, DATABASE_URL, engine, get_db
 from .models import Student, AssessmentAttempt
 from .schemas import StudentCreate, StudentOut, AttemptCreate
 from .curriculum import OBJECTIVES, ASSESSMENTS
 from .learning import make_learning_plan
 
-Base.metadata.create_all(bind=engine)
+if DATABASE_URL.startswith("sqlite"):
+    # Local development convenience. Production schema is managed in PostgreSQL.
+    Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="SDIS MVP",
@@ -18,6 +24,17 @@ app = FastAPI(
         "Demonstration curriculum and heuristic scoring only."
     ),
 )
+
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def require_api_key(api_key: str | None = Depends(api_key_header)):
+    expected_key = os.getenv("SDIS_API_KEY")
+    if not expected_key:
+        raise HTTPException(status_code=503, detail="API access is not configured")
+    if not api_key or not secrets.compare_digest(api_key, expected_key):
+        raise HTTPException(status_code=401, detail="Valid X-API-Key header required")
 
 
 @app.get("/")
@@ -36,6 +53,16 @@ def health():
     return {"status": "ok", "version": "0.1.0", "mode": "prototype"}
 
 
+@app.get("/health/ready")
+def readiness():
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return {"status": "ready", "database": "connected"}
+    except Exception:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+
 @app.get("/curriculum/objectives")
 def list_objectives(grade_level: str | None = None, subject: str | None = None):
     rows = OBJECTIVES
@@ -50,7 +77,7 @@ def list_objectives(grade_level: str | None = None, subject: str | None = None):
     }
 
 
-@app.post("/students", response_model=StudentOut, status_code=201)
+@app.post("/students", response_model=StudentOut, status_code=201, dependencies=[Depends(require_api_key)])
 def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
     student = Student(
         display_name=payload.display_name.strip(),
@@ -63,7 +90,7 @@ def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
     return student
 
 
-@app.get("/students/{student_id}", response_model=StudentOut)
+@app.get("/students/{student_id}", response_model=StudentOut, dependencies=[Depends(require_api_key)])
 def get_student(student_id: int, db: Session = Depends(get_db)):
     student = db.get(Student, student_id)
     if not student:
@@ -88,7 +115,7 @@ def get_assessment(assessment_id: str):
     }
 
 
-@app.post("/assessments/{assessment_id}/attempts", status_code=201)
+@app.post("/assessments/{assessment_id}/attempts", status_code=201, dependencies=[Depends(require_api_key)])
 def submit_attempt(assessment_id: str, payload: AttemptCreate, db: Session = Depends(get_db)):
     assessment = ASSESSMENTS.get(assessment_id)
     if not assessment:
@@ -158,7 +185,7 @@ def submit_attempt(assessment_id: str, payload: AttemptCreate, db: Session = Dep
     }
 
 
-@app.get("/students/{student_id}/learning-plan")
+@app.get("/students/{student_id}/learning-plan", dependencies=[Depends(require_api_key)])
 def get_learning_plan(student_id: int, db: Session = Depends(get_db)):
     student = db.get(Student, student_id)
     if not student:
@@ -173,7 +200,7 @@ def get_learning_plan(student_id: int, db: Session = Depends(get_db)):
     return make_learning_plan(student_id, latest)
 
 
-@app.get("/students/{student_id}/report")
+@app.get("/students/{student_id}/report", dependencies=[Depends(require_api_key)])
 def get_student_report(student_id: int, db: Session = Depends(get_db)):
     student = db.get(Student, student_id)
     if not student:
