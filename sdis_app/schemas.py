@@ -27,6 +27,9 @@ class StudentOut(BaseModel):
 class AnswerIn(BaseModel):
     question_id: str = Field(min_length=1, max_length=80)
     answer: str = Field(max_length=500)
+    time_spent_seconds: Optional[int] = Field(default=None, ge=0, le=3600)
+    hint_count: int = Field(default=0, ge=0, le=100)
+    revision_count: int = Field(default=0, ge=0, le=100)
 
     @field_validator("question_id")
     @classmethod
@@ -39,6 +42,7 @@ class AnswerIn(BaseModel):
 
 class AttemptCreate(BaseModel):
     student_id: int = Field(gt=0)
+    demo_session_id: Optional[str] = Field(default=None, min_length=32, max_length=64)
     answers: List[AnswerIn] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
